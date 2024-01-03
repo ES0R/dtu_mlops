@@ -1,8 +1,11 @@
 import click
-from model import MyAwesomeModel
 import torch
-from torch import nn, optim
+from torch import nn
+from model import myawesomemodel
+
 from data import mnist
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 @click.group()
 def cli():
@@ -12,29 +15,35 @@ def cli():
 
 @click.command()
 @click.option("--lr", default=1e-3, help="learning rate to use for training")
-def train(lr):
+@click.option("--batch_size", default=256, help="batch size to use for training")
+@click.option("--num_epochs", default=20, help="number of epochs to train for")
+def train(lr, batch_size, num_epochs):
     """Train a model on MNIST."""
     print("Training day and night")
     print(lr)
+    print(batch_size)
 
     # TODO: Implement training loop here
-    model = MyAwesomeModel()
-    train_set, _ = mnist(r"C:\Users\Emil\Documents\DTU_git\dtu_mlops\data\corruptmnist")
+    model = myawesomemodel.to(device)
+    train_set, _ = mnist()
+    train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
 
-    criterion = nn.NLLLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    loss_fn = nn.CrossEntropyLoss()
 
-    epochs = 10
-    for e in range(epochs):
-        for images, labels in train_set:
-            images = images.view(images.shape[0], -1)  # Flatten MNIST images
+    for epoch in range(num_epochs):
+        for batch in train_dataloader:
             optimizer.zero_grad()
-            output = model(images)
-            loss = criterion(output, labels)
+            x, y = batch
+            x = x.to(device)
+            y = y.to(device)
+            y_pred = model(x)
+            loss = loss_fn(y_pred, y)
             loss.backward()
             optimizer.step()
+        print(f"Epoch {epoch} Loss {loss}")
 
-    torch.save(model, 'trained_model.pt')
+    torch.save(model, "model.pt")
 
 
 @click.command()
@@ -44,26 +53,29 @@ def evaluate(model_checkpoint):
     print("Evaluating like my life dependends on it")
     print(model_checkpoint)
 
-
-    # Load the trained model
+    # TODO: Implement evaluation logic here
     model = torch.load(model_checkpoint)
-    model.eval()  # Set the model to evaluation mode
+    _, test_set = mnist()
+    test_dataloader = torch.utils.data.DataLoader(
+        test_set, batch_size=64, shuffle=False
+    )
+    model.eval()
 
-    # Load the test data
-    _, test_loader = mnist(r"C:\Users\Emil\Documents\DTU_git\dtu_mlops\data\corruptmnist")
+    test_preds = [ ]
+    test_labels = [ ]
+    with torch.no_grad():
+        for batch in test_dataloader:
+            x, y = batch
+            x = x.to(device)
+            y = y.to(device)
+            y_pred = model(x)
+            test_preds.append(y_pred.argmax(dim=1).cpu())
+            test_labels.append(y.cpu())
 
-    correct = 0
-    total = 0
-    with torch.no_grad():  # Turn off gradients for evaluation
-        for images, labels in test_loader:
-            # Assuming the model outputs log probabilities, use torch.exp to get probabilities
-            outputs = torch.exp(model(images))
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+    test_preds = torch.cat(test_preds, dim=0)
+    test_labels = torch.cat(test_labels, dim=0)
 
-    accuracy = 100 * correct / total
-    print(f'Accuracy of the model on the test images: {accuracy}%')
+    print((test_preds == test_labels).float().mean())
 
 
 cli.add_command(train)
