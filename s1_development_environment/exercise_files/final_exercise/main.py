@@ -44,7 +44,7 @@ def train(lr, batch_size, num_epochs):
         print(f"Epoch {epoch} Loss {loss}")
 
     torch.save(model, "model.pt")
-
+    print("Model saved")
 
 @click.command()
 @click.argument("model_checkpoint")
